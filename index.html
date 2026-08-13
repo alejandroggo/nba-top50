@@ -156,18 +156,18 @@
   }
   ul.legend{
     list-style:none;
-    margin:0 0 10px;
-    padding:10px 12px;
+    margin:0 0 12px;
+    padding:10px 14px;
     background:var(--panel2);
     border:1px solid var(--border);
     border-radius:10px;
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
-    gap:4px 16px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 22px;
     font-size:0.8rem;
     color:var(--muted);
   }
-  ul.legend li{ display:flex; align-items:center; gap:8px; }
+  ul.legend li{ display:flex; align-items:center; gap:7px; }
   .mini-ghost{
     flex:0 0 auto;
     min-width:22px;
@@ -213,14 +213,25 @@
     list-style:none;
     margin:0;
     padding:6px;
-    max-height:230px;
+    max-height:560px;
     overflow-y:auto;
     border:1px solid var(--border);
     border-radius:12px;
     background:var(--panel2);
     transition:background .15s, border-color .15s;
   }
-  .dnd-list.ranked{max-height:360px;}
+  /* Fila de menciones honoríficas (a lo ancho, debajo del Top 40) */
+  .dnd-col.mentions-row{ margin-top:18px; }
+  .dnd-list.mentions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    max-height:none;
+  }
+  .dnd-list.mentions li{ margin-bottom:0; }
+  @media (max-width:720px){
+    .dnd-list{ max-height:340px; }
+  }
   .dnd-list.drag-over{
     background:rgba(61,139,255,0.08);
     border-color:var(--accent2);
@@ -420,15 +431,15 @@
           <span class="muted" id="progress-text">0 / 40</span>
         </div>
         <div class="progress-bar"><div id="progress-fill" style="width:0%;"></div></div>
-        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Completa tu <b>Top 40</b> (obligatorio). Usa <b>“Seguro que van”</b> para aparcar sin ordenar a los que quieres sí o sí — cuentan para el 40 y se colocan al final al enviar. Las <b>menciones honoríficas</b> (hasta 3, aparte del 40) son un último recurso: <b>arrástralos</b> a esa columna. Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
+        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Tu voto es tu <b>Top 40 ordenado</b> (obligatorio). <b>“Seguro que van”</b> es solo una zona para <b>cribar</b> tu preselección (p. ej. si tienes 43 candidatos): <b>no cuenta ni se envía</b>. Las <b>menciones honoríficas</b> (hasta 3, aparte del 40) van abajo: <b>arrástralos</b> ahí. Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
 
         <ul class="legend">
-          <li><span class="mini-ghost">?</span> lo aparca en <b>“Seguro que van”</b> (cuenta para el 40)</li>
-          <li><span class="mini-ghost">+</span> lo añade a tu <b>Top 40</b> (ordenado)</li>
-          <li><span class="mini-ghost">⠿</span> arrástralo a <b>“Menciones honoríficas”</b> para añadirlo ahí (máx. 3)</li>
+          <li><span class="mini-ghost">?</span> a <b>“Seguro que van”</b> (zona de filtro, no se envía)</li>
+          <li><span class="mini-ghost">+</span> a tu <b>Top 40</b> (tu voto)</li>
           <li><span class="mini-ghost">→</span> pasa a tu <b>Top 40</b></li>
-          <li><span class="mini-ghost">▲ ▼</span> sube o baja el puesto dentro del Top 40</li>
-          <li><span class="mini-ghost">✕</span> lo quita y vuelve a <b>Disponibles</b></li>
+          <li><span class="mini-ghost">▲ ▼</span> mueve el puesto en el Top 40</li>
+          <li><span class="mini-ghost">✕</span> lo quita (vuelve a Disponibles)</li>
+          <li><span class="mini-ghost">⠿</span> arrastra para mover (y para las menciones de abajo)</li>
         </ul>
 
         <input type="text" id="player-search" placeholder="🔍 Buscar jugador…">
@@ -440,18 +451,20 @@
           </div>
           <div class="dnd-col">
             <h3>Seguro que van <span class="count" id="count-bench">0</span></h3>
-            <p class="col-hint">Sin orden · cuentan para el 40</p>
-            <ul class="dnd-list" id="list-bench" data-zone="bench" data-empty-text="Arrastra aquí a quien quieras incluir sí o sí (sin ordenar todavía)"></ul>
+            <p class="col-hint">Solo para filtrar · no cuenta ni se envía</p>
+            <ul class="dnd-list" id="list-bench" data-zone="bench" data-empty-text="Aparca aquí tu preselección para ir cribando (no se envía)"></ul>
           </div>
           <div class="dnd-col">
             <h3>Mi Top 40 <span class="count" id="count-ranked">0/40</span></h3>
+            <p class="col-hint">Ordenado · esto es tu voto</p>
             <ol class="dnd-list ranked" id="list-ranked" data-zone="ranked" data-empty-text="Tu ranking aparecerá aquí"></ol>
           </div>
-          <div class="dnd-col">
-            <h3>Menciones honoríficas <span class="count" id="count-mentions">0/3</span></h3>
-            <p class="col-hint">Hasta 3 · sin orden · aparte del 40</p>
-            <ul class="dnd-list" id="list-mentions" data-zone="mentions" data-empty-text="Opcional: hasta 3 menciones fuera del Top 40"></ul>
-          </div>
+        </div>
+
+        <div class="dnd-col mentions-row">
+          <h3>Menciones honoríficas <span class="count" id="count-mentions">0/3</span></h3>
+          <p class="col-hint">Hasta 3 · sin orden · aparte del 40 · solo desempatan · arrástralos aquí</p>
+          <ul class="dnd-list mentions" id="list-mentions" data-zone="mentions" data-empty-text="Opcional: arrastra aquí hasta 3 menciones honoríficas"></ul>
         </div>
 
         <div id="picker-done" class="hidden" style="margin-top:12px;">
@@ -757,8 +770,8 @@ function clearDraftLocal(){
 // Reconstruye pool/bench/ranked/mentions a partir de un borrador o voto guardado.
 function applyPicks(savedBench, savedRanked, savedMentions){
   const r = (savedRanked || []).filter(p=>PLAYERS.includes(p)).slice(0, PICKS);
-  // "Seguro que van" comparte el presupuesto de 40 con los ordenados
-  const b = (savedBench || []).filter(p=>PLAYERS.includes(p) && !r.includes(p)).slice(0, Math.max(0, PICKS - r.length));
+  // "Seguro que van" es una zona de filtro libre: no tiene tope de presupuesto
+  const b = (savedBench || []).filter(p=>PLAYERS.includes(p) && !r.includes(p));
   const taken = new Set(b.concat(r));
   const m = (savedMentions || []).filter(p=>PLAYERS.includes(p) && !taken.has(p)).slice(0, HONORABLE);
   m.forEach(p=>taken.add(p));
@@ -1042,10 +1055,10 @@ function renderRanked(){
 }
 
 function updateProgress(){
-  // el 40 se completa entre el Top 40 ordenado y "Seguro que van"
-  const n = combinedCount();
+  // el voto es solo el Top 40 ordenado; "Seguro que van" no cuenta
+  const n = ranked.length;
   const extras = [];
-  if(bench.length) extras.push(bench.length + " sin ordenar");
+  if(bench.length) extras.push(bench.length + " en filtro");
   if(mentions.length) extras.push(mentions.length + " menciones");
   document.getElementById("progress-text").textContent = n + " / " + PICKS + (extras.length ? "  (" + extras.join(" · ") + ")" : "");
   document.getElementById("progress-fill").style.width = (Math.min(n,PICKS)/PICKS*100) + "%";
@@ -1069,12 +1082,12 @@ function flashStatus(msg){
 function moveItem(name, fromZone, toZone, toIndex){
   if(fromZone===toZone && toIndex!=null){
     // reordering within same zone still allowed even at full budget
-  } else if(toZone==="ranked" || toZone==="bench"){
-    // Top 40 + "Seguro que van" comparten el presupuesto de 40
-    let combined = combinedCount();
-    if(fromZone==="ranked" || fromZone==="bench") combined -= 1;
-    if(combined>=PICKS){
-      flashStatus("Ya tienes 40 entre tu Top 40 y \"Seguro que van\". Quita a alguien antes de añadir otro.");
+  } else if(toZone==="ranked"){
+    // solo el Top 40 tiene tope de 40. "Seguro que van" es libre (es un filtro).
+    let n = ranked.length;
+    if(fromZone==="ranked") n -= 1;
+    if(n>=PICKS){
+      flashStatus("Ya tienes 40 en tu Top 40. Quita a alguien antes de añadir otro.");
       return;
     }
   } else if(toZone==="mentions"){
@@ -1232,11 +1245,11 @@ async function notifyByEmail(name, rankings, mentionsList){
 document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("vote-status");
   const btn = document.getElementById("btn-submit-vote");
-  // el Top 40 son los ordenados + los de "Seguro que van" (estos al final)
-  const finalRankings = ranked.concat(bench);
+  // el voto es solo el Top 40 ordenado. "Seguro que van" es un filtro y no se envía.
+  const finalRankings = ranked.slice();
   const finalMentions = mentions.slice();
   if(finalRankings.length !== PICKS){
-    flashStatus("Te faltan " + (PICKS - finalRankings.length) + " jugadores para completar tu Top 40.");
+    flashStatus("Te faltan " + (PICKS - finalRankings.length) + " jugadores en tu Top 40 (recuerda: \"Seguro que van\" no se envía).");
     return;
   }
   btn.disabled = true;
@@ -1256,10 +1269,7 @@ document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
     clearDraftLocal();
     localStorage.setItem(localVoteKey(), "1");
     notifyByEmail(voterName, finalRankings, finalMentions);
-    const parts = [];
-    if(bench.length) parts.push(bench.length + " de \"seguro que van\" se colocaron al final");
-    if(finalMentions.length) parts.push(finalMentions.length + " menciones honoríficas");
-    const note = parts.length ? (" (" + parts.join(" · ") + ")") : "";
+    const note = finalMentions.length ? (" (+" + finalMentions.length + " menciones honoríficas)") : "";
     statusEl.textContent = "✅ ¡Voto enviado! Gracias, " + voterName + "." + note;
   }catch(e){
     statusEl.textContent = "Error al enviar: " + e.message + " (puedes reintentar).";
