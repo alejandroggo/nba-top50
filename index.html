@@ -408,8 +408,10 @@
 
         <div class="row" style="margin-top:14px;">
           <button class="btn secondary" id="btn-reset-picks">Reiniciar</button>
+          <button class="btn secondary" id="btn-save-draft">💾 Guardar y seguir luego</button>
           <button class="btn" id="btn-submit-vote" disabled>Enviar mi voto</button>
         </div>
+        <p class="muted" style="font-size:0.78rem;margin:8px 0 0;">Tu progreso se guarda solo en este dispositivo. Pulsa <b>Guardar y seguir luego</b> para poder retomarlo desde otro móvil escribiendo el mismo nombre.</p>
         <p id="vote-status" class="muted" style="margin-top:10px;"></p>
       </div>
     </section>
@@ -492,6 +494,13 @@ const ADMIN_PASSPHRASE = "BALONCESTO26"; // cámbiala aquí si quieres otra cont
      { "rules": { "polls": { ".read": true, ".write": true } } }
 */
 const FIREBASE_DB_URL = "";
+
+/* Aviso por email en cada voto (opcional). Pega aquí la URL de tu Google
+   Apps Script publicado como "app web" (algo como
+   https://script.google.com/macros/s/XXXX/exec). Tu dirección de correo va
+   DENTRO del script, no aquí, así no queda expuesta en el código público.
+   Déjalo vacío ("") para no enviar emails. Ver instrucciones al final del archivo. */
+const EMAIL_ENDPOINT = "";
 
 const PLAYERS = ["AJ Dybantsa", "Ace Bailey", "Alex Sarr", "Alperen Sengun", "Amen Thompson", "Anthony Davis", "Anthony Edwards", "Bam Adebayo", "Brandin Podziemski", "Brandon Miller", "Bub Carrington", "Cade Cunningham", "Caleb Wilson", "Cameron Boozer", "Cason Wallace", "Cedric Coward", "Chet Holmgren", "Collin Murray-Boyles", "Cooper Flagg", "Dalton Knecht", "Damian Lillard", "Darius Garland", "Darryn Peterson", "Deni Avdija", "Dereck Lively II", "Derik Queen", "Devin Booker", "Domantas Sabonis", "Donovan Clingan", "Donovan Mitchell", "Dylan Harper", "Evan Mobley", "GG Jackson II", "Giannis Antetokounmpo", "Jaime Jaquez Jr.", "Jalen Brunson", "Jalen Duren", "Jalen Johnson", "Jalen Williams", "Jamal Murray", "James Harden", "Jaren Jackson Jr.", "Jaylen Brown", "Jaylen Wells", "Jayson Tatum", "Jeremiah Fears", "Joel Embiid", "Julius Randle", "Karl-Anthony Towns", "Kawhi Leonard", "Keaton Wagler", "Kel'el Ware", "Kevin Durant", "Keyonte George", "Kon Knueppel", "Kyrie Irving", "LeBron James", "Luka Doncic", "Matas Buzelis", "Maxime Raynaud", "Nikola Jokic", "Norman Powell", "Paolo Banchero", "Pascal Siakam", "Paul George", "Ryan Dunn", "Scottie Barnes", "Shai Gilgeous-Alexander", "Stephen Curry", "Stephon Castle", "Trae Young", "Trayce Jackson-Davis", "Tyler Herro", "Tyrese Haliburton", "Tyrese Maxey", "VJ Edgecombe", "Victor Wembanyama", "Yves Missi", "Zaccharie Risacher", "Zach Edey"];
 
@@ -659,6 +668,40 @@ async function savePoll(fullId, data){
 
 function normName(n){ return n.trim().toLowerCase().replace(/\s+/g," "); }
 function localVoteKey(){ return "nbatop50_voted_" + pollId + "_" + voterKey; }
+function localDraftKey(){ return "nbatop50_draft_" + pollId + "_" + voterKey; }
+
+/* ---------------------------------------------------------------
+   BORRADORES: guardar y seguir luego
+   - Local: se guarda solo en este dispositivo en cada cambio (sin botón).
+   - Nube: el botón "Guardar y seguir luego" sube el borrador a la votación
+     (data.drafts[nombre]) para poder retomarlo desde otro dispositivo.
+   Guardamos bench + ranked; el pool se deduce (todos los jugadores que no
+   estén ya en bench o ranked).
+--------------------------------------------------------------- */
+function saveDraftLocal(){
+  if(!pollId || !voterKey) return;
+  try{
+    localStorage.setItem(localDraftKey(), JSON.stringify({bench, ranked, ts: Date.now()}));
+  }catch(e){ /* almacenamiento lleno o bloqueado: ignorar */ }
+}
+function loadDraftLocal(){
+  try{
+    const raw = localStorage.getItem(localDraftKey());
+    return raw ? JSON.parse(raw) : null;
+  }catch(e){ return null; }
+}
+function clearDraftLocal(){
+  try{ localStorage.removeItem(localDraftKey()); }catch(e){}
+}
+// Reconstruye pool/bench/ranked a partir de un borrador o voto guardado.
+function applyPicks(savedBench, savedRanked){
+  const b = (savedBench || []).filter(p=>PLAYERS.includes(p));
+  const r = (savedRanked || []).filter(p=>PLAYERS.includes(p));
+  const taken = new Set(b.concat(r));
+  ranked = r;
+  bench = b;
+  pool = PLAYERS.filter(p=>!taken.has(p));
+}
 
 /* ---------------------------------------------------------------
    INIT / ROUTING
@@ -751,19 +794,36 @@ async function startVote(){
   document.getElementById("vote-name-step").classList.add("hidden");
   document.getElementById("vote-builder").classList.remove("hidden");
 
-  // try to preload an existing vote for this name (from shared storage), else empty
-  pool = PLAYERS.slice();
-  bench = [];
-  ranked = [];
+  // Restaurar progreso: elegimos lo más reciente entre el borrador local
+  // (este dispositivo), el borrador en la nube y un voto ya enviado con
+  // este nombre. Así "guardar y seguir luego" funciona en cualquier caso.
+  applyPicks([], []); // empezar limpio
+  const candidates = [];
+  const local = loadDraftLocal();
+  if(local && (local.bench || local.ranked)){
+    candidates.push({ts: local.ts||0, bench: local.bench, ranked: local.ranked, kind:"local"});
+  }
   try{
     const data = await fetchPoll(pollId);
-    const existing = data.votes && data.votes[voterKey];
-    if(existing && existing.rankings){
-      ranked = existing.rankings.slice();
-      pool = PLAYERS.filter(p=>!ranked.includes(p));
-      document.getElementById("vote-status").textContent = "Ya habías votado con este nombre — puedes revisar y volver a enviar para actualizar tu voto.";
+    const cloudDraft = data.drafts && data.drafts[voterKey];
+    if(cloudDraft && (cloudDraft.bench || cloudDraft.ranked)){
+      candidates.push({ts: cloudDraft.ts||0, bench: cloudDraft.bench, ranked: cloudDraft.ranked, kind:"cloud"});
     }
-  }catch(e){ /* ignore, start fresh */ }
+    const submitted = data.votes && data.votes[voterKey];
+    if(submitted && submitted.rankings){
+      candidates.push({ts: submitted.ts||0, bench: [], ranked: submitted.rankings, kind:"submitted"});
+    }
+  }catch(e){ /* sin conexión o votación nueva: seguimos con lo local */ }
+
+  const statusEl = document.getElementById("vote-status");
+  if(candidates.length){
+    candidates.sort((a,b)=>b.ts-a.ts);
+    const best = candidates[0];
+    applyPicks(best.bench, best.ranked);
+    statusEl.textContent = best.kind==="submitted"
+      ? "Ya habías votado con este nombre — puedes revisar y volver a enviar para actualizar tu voto."
+      : "Recuperamos tu progreso guardado. Continúa donde lo dejaste.";
+  }
 
   renderAll();
 }
@@ -773,6 +833,29 @@ document.getElementById("btn-reset-picks").addEventListener("click", ()=>{
   bench = [];
   ranked = [];
   renderAll();
+});
+
+document.getElementById("btn-save-draft").addEventListener("click", async ()=>{
+  const btn = document.getElementById("btn-save-draft");
+  const statusEl = document.getElementById("vote-status");
+  saveDraftLocal(); // en este dispositivo, siempre
+  if(ranked.length===0 && bench.length===0){
+    statusEl.textContent = "Añade al menos un jugador antes de guardar.";
+    return;
+  }
+  btn.disabled = true;
+  statusEl.innerHTML = '<span class="spinner"></span>Guardando borrador…';
+  try{
+    const data = await fetchPoll(pollId);
+    if(!data.drafts) data.drafts = {};
+    data.drafts[voterKey] = { name: voterName, bench, ranked, ts: Date.now() };
+    await savePoll(pollId, data);
+    statusEl.textContent = "💾 Borrador guardado. Entra con el mismo nombre desde cualquier dispositivo para continuar.";
+  }catch(e){
+    statusEl.textContent = "Guardado en este dispositivo ✓ (no se pudo subir a la nube: " + e.message + ").";
+  }finally{
+    btn.disabled = false;
+  }
 });
 
 document.getElementById("player-search").addEventListener("input", (e)=>{
@@ -797,6 +880,7 @@ function renderAll(){
   renderBench();
   renderRanked();
   updateProgress();
+  saveDraftLocal();
 }
 
 function avatarHtml(name){
@@ -1022,6 +1106,21 @@ function onDragEnd(){
   });
 });
 
+// Aviso opcional por email al organizador en cada voto, vía Google Apps
+// Script. El Apps Script no envía cabeceras CORS, así que usamos no-cors
+// (enviar y olvidar): no bloquea ni hace fallar el voto si algo va mal.
+async function notifyByEmail(name, rankings){
+  if(!EMAIL_ENDPOINT) return;
+  try{
+    await fetch(EMAIL_ENDPOINT, {
+      method: "POST",
+      mode: "no-cors",
+      headers: {"Content-Type":"text/plain;charset=utf-8"},
+      body: JSON.stringify({ poll: pollId, name: name, rankings: rankings, ts: Date.now() })
+    });
+  }catch(e){ console.warn("Aviso por email falló (no afecta al voto):", e.message); }
+}
+
 document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("vote-status");
   const btn = document.getElementById("btn-submit-vote");
@@ -1040,8 +1139,12 @@ document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
       rankings: finalRankings,
       ts: Date.now()
     };
+    // el voto definitivo sustituye a cualquier borrador guardado en la nube
+    if(data.drafts && data.drafts[voterKey]) delete data.drafts[voterKey];
     await savePoll(pollId, data);
+    clearDraftLocal();
     localStorage.setItem(localVoteKey(), "1");
+    notifyByEmail(voterName, finalRankings);
     const benchNote = bench.length ? (" (" + bench.length + " sin ordenar se colocaron al final)") : "";
     statusEl.textContent = "✅ ¡Voto enviado! Gracias, " + voterName + "." + benchNote;
   }catch(e){
@@ -1212,5 +1315,43 @@ document.getElementById("btn-export").addEventListener("click", async ()=>{
 window.addEventListener("hashchange", init);
 init();
 </script>
+
+<!--
+=====================================================================
+ AVISO POR EMAIL — cómo montar el Google Apps Script (gratis, ~5 min)
+=====================================================================
+ 1. Entra en https://script.google.com  →  "Nuevo proyecto".
+ 2. Borra lo que haya y pega este código (cambia TU_CORREO por el tuyo):
+
+    const DESTINO = "TU_CORREO@gmail.com";
+
+    function doPost(e) {
+      try {
+        const d = JSON.parse(e.postData.contents);
+        const lista = (d.rankings || [])
+          .map(function (n, i) { return (i + 1) + ". " + n; })
+          .join("\n");
+        MailApp.sendEmail(
+          DESTINO,
+          "Top 50 NBA — voto de " + (d.name || "anónimo"),
+          "Votación: " + d.poll + "\nFecha: " + new Date(d.ts || Date.now()) +
+          "\n\n" + lista
+        );
+        return ContentService.createTextOutput("ok");
+      } catch (err) {
+        return ContentService.createTextOutput("error: " + err);
+      }
+    }
+
+ 3. Menú "Implementar" → "Nueva implementación" → tipo "Aplicación web".
+      - Ejecutar como: Yo mismo.
+      - Quién tiene acceso: Cualquier usuario.
+    Publica y autoriza los permisos que pida (es tu propia cuenta).
+ 4. Copia la URL que acaba en "/exec" y pégala arriba en EMAIL_ENDPOINT.
+
+ Nota: tu correo vive dentro del script (arriba en DESTINO), NO en esta
+ página pública. Si dejas EMAIL_ENDPOINT vacío, no se envía ningún email.
+=====================================================================
+-->
 </body>
 </html>
