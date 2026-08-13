@@ -42,9 +42,9 @@
     font-size:0.92rem;
   }
   .wrap{
-    max-width:640px;
+    max-width:1400px;
     margin:0 auto;
-    padding:0 16px;
+    padding:0 24px;
   }
   nav.tabs{
     display:flex;
@@ -141,9 +141,47 @@
   /* ---- Drag & drop board ---- */
   .dnd-columns{
     display:flex;
-    flex-direction:column;
+    flex-direction:row;
+    align-items:flex-start;
     gap:16px;
     margin-top:12px;
+  }
+  .dnd-col{
+    flex:1 1 0;
+    min-width:0;
+  }
+  /* En pantallas estrechas (móvil) las columnas se apilan de nuevo */
+  @media (max-width:720px){
+    .dnd-columns{ flex-direction:column; }
+  }
+  ul.legend{
+    list-style:none;
+    margin:0 0 10px;
+    padding:10px 12px;
+    background:var(--panel2);
+    border:1px solid var(--border);
+    border-radius:10px;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
+    gap:4px 16px;
+    font-size:0.8rem;
+    color:var(--muted);
+  }
+  ul.legend li{ display:flex; align-items:center; gap:8px; }
+  .mini-ghost{
+    flex:0 0 auto;
+    min-width:22px;
+    height:22px;
+    padding:0 5px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:6px;
+    color:var(--text);
+    font-size:0.75rem;
+    font-weight:700;
   }
   .dnd-col h3{
     display:flex;
@@ -368,9 +406,9 @@
 
       <div id="vote-name-step" class="card">
         <h2>¿Quién eres?</h2>
-        <p class="muted">Escribe tu nombre o apodo. Úsalo siempre igual: si vuelves a votar con el mismo nombre, se sustituirá tu voto anterior.</p>
+        <p class="muted">Escribe tu <b>@ de Twitter/X</b> (incluye el @). Úsalo siempre igual: si vuelves a entrar con el mismo @, recuperas tu voto o tu borrador y puedes seguir donde lo dejaste.</p>
         <div class="row">
-          <input type="text" id="input-name" placeholder="Tu nombre o apodo" maxlength="40">
+          <input type="text" id="input-name" placeholder="@tuusuario" maxlength="40" autocapitalize="none" autocomplete="off" spellcheck="false">
           <button class="btn" id="btn-start-vote" style="flex:0 0 auto;">Continuar</button>
         </div>
         <p id="name-hint" class="muted" style="margin-top:10px;"></p>
@@ -383,6 +421,14 @@
         </div>
         <div class="progress-bar"><div id="progress-fill" style="width:0%;"></div></div>
         <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Arrastra jugadores desde el tirador <b>⠿</b> entre columnas (o usa los botones). Usa <b>“Seguro que van”</b> para aparcar a los que quieres sí o sí aunque no sepas todavía en qué puesto — si no los mueves, se colocarán al final al enviar.</p>
+
+        <ul class="legend">
+          <li><span class="mini-ghost">?</span> lo manda a <b>“Seguro que van”</b> (sin orden todavía)</li>
+          <li><span class="mini-ghost">+</span> lo añade directo a tu <b>Top 50</b></li>
+          <li><span class="mini-ghost">→</span> pasa de <b>“Seguro que van”</b> a tu <b>Top 50</b></li>
+          <li><span class="mini-ghost">▲ ▼</span> sube o baja el puesto dentro del Top 50</li>
+          <li><span class="mini-ghost">✕</span> lo quita y vuelve a <b>Disponibles</b></li>
+        </ul>
 
         <input type="text" id="player-search" placeholder="🔍 Buscar jugador…">
 
@@ -411,7 +457,7 @@
           <button class="btn secondary" id="btn-save-draft">💾 Guardar y seguir luego</button>
           <button class="btn" id="btn-submit-vote" disabled>Enviar mi voto</button>
         </div>
-        <p class="muted" style="font-size:0.78rem;margin:8px 0 0;">Tu progreso se guarda solo en este dispositivo. Pulsa <b>Guardar y seguir luego</b> para poder retomarlo desde otro móvil escribiendo el mismo nombre.</p>
+        <p class="muted" style="font-size:0.78rem;margin:8px 0 0;">Tu progreso se guarda solo en este dispositivo. Pulsa <b>Guardar y seguir luego</b> para poder retomarlo desde otro móvil escribiendo el mismo @.</p>
         <p id="vote-status" class="muted" style="margin-top:10px;"></p>
       </div>
     </section>
@@ -468,6 +514,7 @@
           <button class="btn" id="btn-toggle-reveal">Revelar resultados</button>
           <button class="btn secondary" id="btn-export">Descargar copia (JSON)</button>
         </div>
+        <button class="btn secondary block" id="btn-clear-votes" style="margin-top:10px;color:var(--bad);border-color:var(--bad);">Borrar todos los votos</button>
         <button class="btn secondary block" id="btn-admin-close" style="margin-top:10px;">Cerrar panel</button>
       </div>
     </div>
@@ -527,7 +574,10 @@ function avatarColor(name){
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 function initials(name){
-  return name.split(" ").filter(Boolean).map(w=>w[0]).slice(0,2).join("").toUpperCase();
+  const clean = String(name).replace(/^@/,"").trim();
+  const words = clean.split(/\s+/).filter(Boolean);
+  if(words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return clean.slice(0,2).toUpperCase();
 }
 
 /* ---------------------------------------------------------------
@@ -786,10 +836,15 @@ document.getElementById("input-name").addEventListener("keydown", e=>{
 
 async function startVote(){
   const nameInput = document.getElementById("input-name");
-  const name = nameInput.value.trim();
-  if(!name){ nameInput.focus(); return; }
-  voterName = name;
-  voterKey = normName(name);
+  // Normalizamos el @ de Twitter: minúsculas, sin espacios y con el @
+  // delante garantizado (aunque el usuario se olvide de ponerlo). Así el
+  // mismo usuario siempre recupera su sesión.
+  let handle = nameInput.value.trim().toLowerCase().replace(/\s+/g,"");
+  if(handle[0] !== "@") handle = "@" + handle;
+  if(handle.length < 2){ nameInput.focus(); return; }
+  nameInput.value = handle;
+  voterName = handle;
+  voterKey = handle;
 
   document.getElementById("vote-name-step").classList.add("hidden");
   document.getElementById("vote-builder").classList.remove("hidden");
@@ -821,7 +876,7 @@ async function startVote(){
     const best = candidates[0];
     applyPicks(best.bench, best.ranked);
     statusEl.textContent = best.kind==="submitted"
-      ? "Ya habías votado con este nombre — puedes revisar y volver a enviar para actualizar tu voto."
+      ? "Ya habías votado con este @ — puedes revisar y volver a enviar para actualizar tu voto."
       : "Recuperamos tu progreso guardado. Continúa donde lo dejaste.";
   }
 
@@ -850,7 +905,7 @@ document.getElementById("btn-save-draft").addEventListener("click", async ()=>{
     if(!data.drafts) data.drafts = {};
     data.drafts[voterKey] = { name: voterName, bench, ranked, ts: Date.now() };
     await savePoll(pollId, data);
-    statusEl.textContent = "💾 Borrador guardado. Entra con el mismo nombre desde cualquier dispositivo para continuar.";
+    statusEl.textContent = "💾 Borrador guardado. Entra con el mismo @ desde cualquier dispositivo para continuar.";
   }catch(e){
     statusEl.textContent = "Guardado en este dispositivo ✓ (no se pudo subir a la nube: " + e.message + ").";
   }finally{
@@ -1292,6 +1347,24 @@ document.getElementById("btn-toggle-reveal").addEventListener("click", async (e)
   }catch(err){
     document.getElementById("admin-error").textContent = err.message;
   }
+  btn.disabled = false;
+});
+
+document.getElementById("btn-clear-votes").addEventListener("click", async ()=>{
+  if(!confirm("¿Seguro que quieres borrar TODOS los votos (y borradores) de esta votación? Esta acción no se puede deshacer.")) return;
+  const errEl = document.getElementById("admin-error");
+  const btn = document.getElementById("btn-clear-votes");
+  btn.disabled = true;
+  errEl.textContent = "Borrando…";
+  try{
+    const data = await fetchPoll(pollId);
+    data.votes = {};
+    data.drafts = {};
+    data.revealed = false;
+    await savePoll(pollId, data);
+    errEl.textContent = "✅ Votos borrados.";
+    await refreshAdminPanel();
+  }catch(e){ errEl.textContent = "Error: " + e.message; }
   btn.disabled = false;
 });
 
