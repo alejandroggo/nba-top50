@@ -420,12 +420,12 @@
           <span class="muted" id="progress-text">0 / 40</span>
         </div>
         <div class="progress-bar"><div id="progress-fill" style="width:0%;"></div></div>
-        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Completa tu <b>Top 40</b> (obligatorio). Usa <b>“Seguro que van”</b> para aparcar sin ordenar a los que quieres sí o sí — cuentan para el 40 y se colocan al final al enviar. Además puedes añadir <b>hasta 3 menciones honoríficas</b> (aparte del 40). Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
+        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Completa tu <b>Top 40</b> (obligatorio). Usa <b>“Seguro que van”</b> para aparcar sin ordenar a los que quieres sí o sí — cuentan para el 40 y se colocan al final al enviar. Las <b>menciones honoríficas</b> (hasta 3, aparte del 40) son un último recurso: <b>arrástralos</b> a esa columna. Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
 
         <ul class="legend">
           <li><span class="mini-ghost">?</span> lo aparca en <b>“Seguro que van”</b> (cuenta para el 40)</li>
           <li><span class="mini-ghost">+</span> lo añade a tu <b>Top 40</b> (ordenado)</li>
-          <li><span class="mini-ghost">★</span> lo añade a tus <b>menciones honoríficas</b> (máx. 3, aparte)</li>
+          <li><span class="mini-ghost">⠿</span> arrástralo a <b>“Menciones honoríficas”</b> para añadirlo ahí (máx. 3)</li>
           <li><span class="mini-ghost">→</span> pasa a tu <b>Top 40</b></li>
           <li><span class="mini-ghost">▲ ▼</span> sube o baja el puesto dentro del Top 40</li>
           <li><span class="mini-ghost">✕</span> lo quita y vuelve a <b>Disponibles</b></li>
@@ -976,7 +976,6 @@ function renderPool(){
       '<span class="item-actions">' +
         '<button class="mini" data-action="toBench" title="Seguro que va (sin orden, cuenta para el 40)">?</button>' +
         '<button class="mini" data-action="toRanked" title="Añadir al Top 40">+</button>' +
-        '<button class="mini" data-action="toMentions" title="Mención honorífica (máx. 3, aparte)">★</button>' +
       '</span>';
     ul.appendChild(li);
   });
