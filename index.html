@@ -420,12 +420,13 @@
           <span class="muted" id="progress-text">0 / 40</span>
         </div>
         <div class="progress-bar"><div id="progress-fill" style="width:0%;"></div></div>
-        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Ordena tu <b>Top 40</b> (obligatorio) arrastrando jugadores desde el tirador <b>⠿</b> o con los botones. Además puedes añadir <b>hasta 3 menciones honoríficas</b> (sin orden): jugadores que quieres nombrar aunque no entren en tu 40. Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
+        <p class="muted" style="font-size:0.8rem;margin:0 0 8px;">Completa tu <b>Top 40</b> (obligatorio). Usa <b>“Seguro que van”</b> para aparcar sin ordenar a los que quieres sí o sí — cuentan para el 40 y se colocan al final al enviar. Además puedes añadir <b>hasta 3 menciones honoríficas</b> (aparte del 40). Luego, sumando los votos de todos, saldrá un Top 50 colectivo.</p>
 
         <ul class="legend">
-          <li><span class="mini-ghost">★</span> lo añade a tus <b>menciones honoríficas</b> (máx. 3)</li>
-          <li><span class="mini-ghost">+</span> lo añade a tu <b>Top 40</b></li>
-          <li><span class="mini-ghost">→</span> pasa una mención a tu <b>Top 40</b></li>
+          <li><span class="mini-ghost">?</span> lo aparca en <b>“Seguro que van”</b> (cuenta para el 40)</li>
+          <li><span class="mini-ghost">+</span> lo añade a tu <b>Top 40</b> (ordenado)</li>
+          <li><span class="mini-ghost">★</span> lo añade a tus <b>menciones honoríficas</b> (máx. 3, aparte)</li>
+          <li><span class="mini-ghost">→</span> pasa a tu <b>Top 40</b></li>
           <li><span class="mini-ghost">▲ ▼</span> sube o baja el puesto dentro del Top 40</li>
           <li><span class="mini-ghost">✕</span> lo quita y vuelve a <b>Disponibles</b></li>
         </ul>
@@ -438,13 +439,18 @@
             <ul class="dnd-list" id="list-pool" data-zone="pool" data-empty-text="No hay jugadores con ese nombre"></ul>
           </div>
           <div class="dnd-col">
-            <h3>Menciones honoríficas <span class="count" id="count-mentions">0/3</span></h3>
-            <p class="col-hint">Hasta 3 · sin orden · opcional</p>
-            <ul class="dnd-list" id="list-mentions" data-zone="mentions" data-empty-text="Opcional: arrastra aquí hasta 3 menciones honoríficas"></ul>
+            <h3>Seguro que van <span class="count" id="count-bench">0</span></h3>
+            <p class="col-hint">Sin orden · cuentan para el 40</p>
+            <ul class="dnd-list" id="list-bench" data-zone="bench" data-empty-text="Arrastra aquí a quien quieras incluir sí o sí (sin ordenar todavía)"></ul>
           </div>
           <div class="dnd-col">
             <h3>Mi Top 40 <span class="count" id="count-ranked">0/40</span></h3>
             <ol class="dnd-list ranked" id="list-ranked" data-zone="ranked" data-empty-text="Tu ranking aparecerá aquí"></ol>
+          </div>
+          <div class="dnd-col">
+            <h3>Menciones honoríficas <span class="count" id="count-mentions">0/3</span></h3>
+            <p class="col-hint">Hasta 3 · sin orden · aparte del 40</p>
+            <ul class="dnd-list" id="list-mentions" data-zone="mentions" data-empty-text="Opcional: hasta 3 menciones fuera del Top 40"></ul>
           </div>
         </div>
 
@@ -562,11 +568,15 @@ let pollId = null;
 let voterName = "";
 let voterKey = "";
 
-// three zones that hold every player: pool (undecided), mentions ("seguro que
-// van" but sin orden), ranked (the final ordered Top 50)
+// zonas que reparten a todos los jugadores:
+//  pool     = disponibles (sin decidir)
+//  bench    = "Seguro que van": sin orden, PERO cuentan para el Top 40
+//  ranked   = "Mi Top 40": ordenado
+//  mentions = "Menciones honoríficas": hasta 3, APARTE del 40
 let pool = [];
-let mentions = [];
+let bench = [];
 let ranked = [];
+let mentions = [];
 let searchTerm = "";
 
 const AVATAR_COLORS = ["#ff7a1a","#3d8bff","#2ecc71","#e0577c","#a06bff","#00b8b0","#f0a500","#5c7cfa"];
@@ -727,13 +737,12 @@ function localDraftKey(){ return "nbatop50_draft_" + pollId + "_" + voterKey; }
    - Local: se guarda solo en este dispositivo en cada cambio (sin botón).
    - Nube: el botón "Guardar y seguir luego" sube el borrador a la votación
      (data.drafts[nombre]) para poder retomarlo desde otro dispositivo.
-   Guardamos mentions + ranked; el pool se deduce (todos los jugadores que no
-   estén ya en mentions o ranked).
+   Guardamos bench + ranked + mentions; el pool se deduce.
 --------------------------------------------------------------- */
 function saveDraftLocal(){
   if(!pollId || !voterKey) return;
   try{
-    localStorage.setItem(localDraftKey(), JSON.stringify({mentions, ranked, ts: Date.now()}));
+    localStorage.setItem(localDraftKey(), JSON.stringify({bench, ranked, mentions, ts: Date.now()}));
   }catch(e){ /* almacenamiento lleno o bloqueado: ignorar */ }
 }
 function loadDraftLocal(){
@@ -745,13 +754,17 @@ function loadDraftLocal(){
 function clearDraftLocal(){
   try{ localStorage.removeItem(localDraftKey()); }catch(e){}
 }
-// Reconstruye pool/mentions/ranked a partir de un borrador o voto guardado.
-function applyPicks(savedMentions, savedRanked){
+// Reconstruye pool/bench/ranked/mentions a partir de un borrador o voto guardado.
+function applyPicks(savedBench, savedRanked, savedMentions){
   const r = (savedRanked || []).filter(p=>PLAYERS.includes(p)).slice(0, PICKS);
-  const b = (savedMentions || []).filter(p=>PLAYERS.includes(p) && !r.includes(p)).slice(0, HONORABLE);
+  // "Seguro que van" comparte el presupuesto de 40 con los ordenados
+  const b = (savedBench || []).filter(p=>PLAYERS.includes(p) && !r.includes(p)).slice(0, Math.max(0, PICKS - r.length));
   const taken = new Set(b.concat(r));
+  const m = (savedMentions || []).filter(p=>PLAYERS.includes(p) && !taken.has(p)).slice(0, HONORABLE);
+  m.forEach(p=>taken.add(p));
   ranked = r;
-  mentions = b;
+  bench = b;
+  mentions = m;
   pool = PLAYERS.filter(p=>!taken.has(p));
 }
 
@@ -854,21 +867,22 @@ async function startVote(){
   // Restaurar progreso: elegimos lo más reciente entre el borrador local
   // (este dispositivo), el borrador en la nube y un voto ya enviado con
   // este nombre. Así "guardar y seguir luego" funciona en cualquier caso.
-  applyPicks([], []); // empezar limpio
+  applyPicks([], [], []); // empezar limpio
   const candidates = [];
   const local = loadDraftLocal();
-  if(local && (local.mentions || local.ranked)){
-    candidates.push({ts: local.ts||0, mentions: local.mentions, ranked: local.ranked, kind:"local"});
+  if(local && (local.bench || local.mentions || local.ranked)){
+    candidates.push({ts: local.ts||0, bench: local.bench, mentions: local.mentions, ranked: local.ranked, kind:"local"});
   }
   try{
     const data = await fetchPoll(pollId);
     const cloudDraft = data.drafts && data.drafts[voterKey];
-    if(cloudDraft && (cloudDraft.mentions || cloudDraft.ranked)){
-      candidates.push({ts: cloudDraft.ts||0, mentions: cloudDraft.mentions, ranked: cloudDraft.ranked, kind:"cloud"});
+    if(cloudDraft && (cloudDraft.bench || cloudDraft.mentions || cloudDraft.ranked)){
+      candidates.push({ts: cloudDraft.ts||0, bench: cloudDraft.bench, mentions: cloudDraft.mentions, ranked: cloudDraft.ranked, kind:"cloud"});
     }
     const submitted = data.votes && data.votes[voterKey];
     if(submitted && submitted.rankings){
-      candidates.push({ts: submitted.ts||0, mentions: submitted.mentions||[], ranked: submitted.rankings, kind:"submitted"});
+      // un voto enviado guarda el Top 40 ya combinado: va todo a "ranked"
+      candidates.push({ts: submitted.ts||0, bench: [], mentions: submitted.mentions||[], ranked: submitted.rankings, kind:"submitted"});
     }
   }catch(e){ /* sin conexión o votación nueva: seguimos con lo local */ }
 
@@ -876,7 +890,7 @@ async function startVote(){
   if(candidates.length){
     candidates.sort((a,b)=>b.ts-a.ts);
     const best = candidates[0];
-    applyPicks(best.mentions, best.ranked);
+    applyPicks(best.bench, best.ranked, best.mentions);
     statusEl.textContent = best.kind==="submitted"
       ? "Ya habías votado con este @ — puedes revisar y volver a enviar para actualizar tu voto."
       : "Recuperamos tu progreso guardado. Continúa donde lo dejaste.";
@@ -887,8 +901,9 @@ async function startVote(){
 
 document.getElementById("btn-reset-picks").addEventListener("click", ()=>{
   pool = PLAYERS.slice();
-  mentions = [];
+  bench = [];
   ranked = [];
+  mentions = [];
   renderAll();
 });
 
@@ -896,7 +911,7 @@ document.getElementById("btn-save-draft").addEventListener("click", async ()=>{
   const btn = document.getElementById("btn-save-draft");
   const statusEl = document.getElementById("vote-status");
   saveDraftLocal(); // en este dispositivo, siempre
-  if(ranked.length===0 && mentions.length===0){
+  if(ranked.length===0 && bench.length===0 && mentions.length===0){
     statusEl.textContent = "Añade al menos un jugador antes de guardar.";
     return;
   }
@@ -905,7 +920,7 @@ document.getElementById("btn-save-draft").addEventListener("click", async ()=>{
   try{
     const data = await fetchPoll(pollId);
     if(!data.drafts) data.drafts = {};
-    data.drafts[voterKey] = { name: voterName, mentions, ranked, ts: Date.now() };
+    data.drafts[voterKey] = { name: voterName, bench, ranked, mentions, ts: Date.now() };
     await savePoll(pollId, data);
     statusEl.textContent = "💾 Borrador guardado. Entra con el mismo @ desde cualquier dispositivo para continuar.";
   }catch(e){
@@ -925,17 +940,20 @@ document.getElementById("player-search").addEventListener("input", (e)=>{
 --------------------------------------------------------------- */
 function getZoneArray(zone){
   if(zone==="pool") return pool;
-  if(zone==="mentions") return mentions;
+  if(zone==="bench") return bench;
   if(zone==="ranked") return ranked;
+  if(zone==="mentions") return mentions;
   return null;
 }
 
-function combinedCount(){ return ranked.length + mentions.length; }
+// jugadores que cuentan para el Top 40 = ordenados + "seguro que van"
+function combinedCount(){ return ranked.length + bench.length; }
 
 function renderAll(){
   renderPool();
-  renderMentions();
+  renderBench();
   renderRanked();
+  renderMentions();
   updateProgress();
   saveDraftLocal();
 }
@@ -956,12 +974,32 @@ function renderPool(){
       '<span class="drag-handle">⠿</span>' + avatarHtml(name) +
       '<span class="name">'+name+'</span>' +
       '<span class="item-actions">' +
-        '<button class="mini" data-action="toMentions" title="Mención honorífica (máx. 3)">★</button>' +
+        '<button class="mini" data-action="toBench" title="Seguro que va (sin orden, cuenta para el 40)">?</button>' +
         '<button class="mini" data-action="toRanked" title="Añadir al Top 40">+</button>' +
+        '<button class="mini" data-action="toMentions" title="Mención honorífica (máx. 3, aparte)">★</button>' +
       '</span>';
     ul.appendChild(li);
   });
   document.getElementById("count-pool").textContent = pool.length;
+}
+
+function renderBench(){
+  const ul = document.getElementById("list-bench");
+  ul.innerHTML = "";
+  ul.classList.toggle("empty", bench.length===0);
+  bench.forEach(name=>{
+    const li = document.createElement("li");
+    li.dataset.name = name;
+    li.innerHTML =
+      '<span class="drag-handle">⠿</span>' + avatarHtml(name) +
+      '<span class="name">'+name+'</span>' +
+      '<span class="item-actions">' +
+        '<button class="mini" data-action="toRanked" title="Mover a mi Top 40">→</button>' +
+        '<button class="mini rm" data-action="toPool" title="Quitar">✕</button>' +
+      '</span>';
+    ul.appendChild(li);
+  });
+  document.getElementById("count-bench").textContent = bench.length;
 }
 
 function renderMentions(){
@@ -1005,9 +1043,13 @@ function renderRanked(){
 }
 
 function updateProgress(){
-  const n = ranked.length; // el progreso va solo con el Top 40 (las menciones son opcionales)
-  document.getElementById("progress-text").textContent = n + " / " + PICKS + (mentions.length ? "  (" + mentions.length + " menciones)" : "");
-  document.getElementById("progress-fill").style.width = (n/PICKS*100) + "%";
+  // el 40 se completa entre el Top 40 ordenado y "Seguro que van"
+  const n = combinedCount();
+  const extras = [];
+  if(bench.length) extras.push(bench.length + " sin ordenar");
+  if(mentions.length) extras.push(mentions.length + " menciones");
+  document.getElementById("progress-text").textContent = n + " / " + PICKS + (extras.length ? "  (" + extras.join(" · ") + ")" : "");
+  document.getElementById("progress-fill").style.width = (Math.min(n,PICKS)/PICKS*100) + "%";
   const done = n>=PICKS;
   document.getElementById("picker-done").classList.toggle("hidden", !done);
   document.getElementById("btn-submit-vote").disabled = !done;
@@ -1028,11 +1070,12 @@ function flashStatus(msg){
 function moveItem(name, fromZone, toZone, toIndex){
   if(fromZone===toZone && toIndex!=null){
     // reordering within same zone still allowed even at full budget
-  } else if(toZone==="ranked"){
-    let n = ranked.length;
-    if(fromZone==="ranked") n -= 1;
-    if(n>=PICKS){
-      flashStatus("Ya tienes 40 en tu Top 40. Quita a alguien antes de añadir otro.");
+  } else if(toZone==="ranked" || toZone==="bench"){
+    // Top 40 + "Seguro que van" comparten el presupuesto de 40
+    let combined = combinedCount();
+    if(fromZone==="ranked" || fromZone==="bench") combined -= 1;
+    if(combined>=PICKS){
+      flashStatus("Ya tienes 40 entre tu Top 40 y \"Seguro que van\". Quita a alguien antes de añadir otro.");
       return;
     }
   } else if(toZone==="mentions"){
@@ -1054,13 +1097,14 @@ function moveItem(name, fromZone, toZone, toIndex){
 
 function findZoneOf(name){
   if(pool.includes(name)) return "pool";
-  if(mentions.includes(name)) return "mentions";
+  if(bench.includes(name)) return "bench";
   if(ranked.includes(name)) return "ranked";
+  if(mentions.includes(name)) return "mentions";
   return null;
 }
 
-// button actions (event delegation on all three lists)
-["list-pool","list-mentions","list-ranked"].forEach(id=>{
+// button actions (event delegation on all four lists)
+["list-pool","list-bench","list-ranked","list-mentions"].forEach(id=>{
   document.getElementById(id).addEventListener("click", (e)=>{
     const btn = e.target.closest("button.mini");
     if(!btn) return;
@@ -1068,7 +1112,8 @@ function findZoneOf(name){
     const name = li.dataset.name;
     const fromZone = findZoneOf(name);
     const action = btn.dataset.action;
-    if(action==="toMentions") moveItem(name, fromZone, "mentions", mentions.length);
+    if(action==="toBench") moveItem(name, fromZone, "bench", bench.length);
+    else if(action==="toMentions") moveItem(name, fromZone, "mentions", mentions.length);
     else if(action==="toRanked") moveItem(name, fromZone, "ranked", ranked.length);
     else if(action==="toPool") moveItem(name, fromZone, "pool", pool.length);
     else if(action==="up"){
@@ -1158,7 +1203,7 @@ function onDragEnd(){
   }
 }
 
-["list-pool","list-mentions","list-ranked"].forEach(id=>{
+["list-pool","list-bench","list-ranked","list-mentions"].forEach(id=>{
   document.getElementById(id).addEventListener("pointerdown", (e)=>{
     const handle = e.target.closest(".drag-handle");
     if(!handle) return;
@@ -1188,7 +1233,8 @@ async function notifyByEmail(name, rankings, mentionsList){
 document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
   const statusEl = document.getElementById("vote-status");
   const btn = document.getElementById("btn-submit-vote");
-  const finalRankings = ranked.slice();
+  // el Top 40 son los ordenados + los de "Seguro que van" (estos al final)
+  const finalRankings = ranked.concat(bench);
   const finalMentions = mentions.slice();
   if(finalRankings.length !== PICKS){
     flashStatus("Te faltan " + (PICKS - finalRankings.length) + " jugadores para completar tu Top 40.");
@@ -1211,8 +1257,11 @@ document.getElementById("btn-submit-vote").addEventListener("click", async ()=>{
     clearDraftLocal();
     localStorage.setItem(localVoteKey(), "1");
     notifyByEmail(voterName, finalRankings, finalMentions);
-    const mentionsNote = finalMentions.length ? (" (+" + finalMentions.length + " menciones honoríficas)") : "";
-    statusEl.textContent = "✅ ¡Voto enviado! Gracias, " + voterName + "." + mentionsNote;
+    const parts = [];
+    if(bench.length) parts.push(bench.length + " de \"seguro que van\" se colocaron al final");
+    if(finalMentions.length) parts.push(finalMentions.length + " menciones honoríficas");
+    const note = parts.length ? (" (" + parts.join(" · ") + ")") : "";
+    statusEl.textContent = "✅ ¡Voto enviado! Gracias, " + voterName + "." + note;
   }catch(e){
     statusEl.textContent = "Error al enviar: " + e.message + " (puedes reintentar).";
     btn.disabled = false;
